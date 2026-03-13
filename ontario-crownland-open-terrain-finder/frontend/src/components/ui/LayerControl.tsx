@@ -3,7 +3,6 @@ import React from 'react';
 export const LAYERS = [
   { id: 'candidates', name: 'Open Terrain Candidates', defaultOn: true },
   { id: 'clupa_polygons', name: 'Crown Land Use (CLUPA)', defaultOn: true },
-  { id: 'protected_areas', name: 'Protected Areas', defaultOn: false },
 ];
 
 interface LayerControlProps {
@@ -13,6 +12,10 @@ interface LayerControlProps {
   onSetBaseLayer: (layer: 'outdoors' | 'satellite') => void;
   showTerrain: boolean;
   onToggleTerrain: () => void;
+  candidateOpacity: number;
+  onSetCandidateOpacity: (opacity: number) => void;
+  clupaOpacity: number;
+  onSetClupaOpacity: (opacity: number) => void;
 }
 
 export default function LayerControl({ 
@@ -21,8 +24,14 @@ export default function LayerControl({
   baseLayer,
   onSetBaseLayer,
   showTerrain,
-  onToggleTerrain
+  onToggleTerrain,
+  candidateOpacity,
+  onSetCandidateOpacity,
+  clupaOpacity,
+  onSetClupaOpacity
 }: LayerControlProps) {
+  const [isOpacityExpanded, setIsOpacityExpanded] = React.useState(false);
+
   return (
     <div className="absolute left-4 top-4 w-52 bg-slate-900/90 backdrop-blur-sm rounded-lg shadow-xl z-10 p-3 border border-slate-700">
       {/* ── Base Map Selection ── */}
@@ -100,6 +109,60 @@ export default function LayerControl({
           }`} />
         </button>
       </label>
+
+      {/* ── Opacity Accordion —- */}
+      <div className="mt-4 pt-4 border-t border-slate-700">
+        <button 
+          onClick={() => setIsOpacityExpanded(!isOpacityExpanded)}
+          className="flex items-center justify-between w-full group overflow-hidden"
+        >
+          <span className="text-[10px] text-slate-300 font-semibold uppercase tracking-wider">Opacity Settings</span>
+          <svg 
+            className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${isOpacityExpanded ? 'rotate-180' : ''}`} 
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        
+        <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isOpacityExpanded ? 'max-h-40 opacity-100 mt-3' : 'max-h-0 opacity-0'}`}>
+          <div className="px-1 flex flex-col gap-4">
+            {/* Candidates Slider */}
+            <div>
+              <div className="flex justify-between mb-1.5">
+                <span className="text-[9px] text-slate-400 font-medium">Candidates</span>
+                <span className="text-[9px] text-purple-400 font-bold">{Math.round(candidateOpacity * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0.05"
+                max="1.0"
+                step="0.05"
+                value={candidateOpacity}
+                onChange={(e) => onSetCandidateOpacity(parseFloat(e.target.value))}
+                className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500 hover:accent-purple-400 transition-all"
+              />
+            </div>
+
+            {/* Crown Land Slider */}
+            <div>
+              <div className="flex justify-between mb-1.5">
+                <span className="text-[9px] text-slate-400 font-medium">Crown Land</span>
+                <span className="text-[9px] text-emerald-400 font-bold">{Math.round(clupaOpacity * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0.05"
+                max="1.0"
+                step="0.05"
+                value={clupaOpacity}
+                onChange={(e) => onSetClupaOpacity(parseFloat(e.target.value))}
+                className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 hover:accent-emerald-400 transition-all"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

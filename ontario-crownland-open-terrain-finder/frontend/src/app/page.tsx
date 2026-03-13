@@ -26,9 +26,61 @@ export default function Home() {
 
   const defaultLayers = LAYERS.filter(l => l.defaultOn).map(l => l.id);
   const [activeLayers, setActiveLayers] = useState<string[]>(defaultLayers);
-  const [baseLayer, setBaseLayer] = useState<'outdoors' | 'satellite'>('outdoors');
+  const [baseLayer, setBaseLayer] = useState<'outdoors' | 'satellite'>('satellite');
   const [showTerrain, setShowTerrain] = useState(true);
+  const [candidateOpacity, setCandidateOpacity] = useState(0.8);
+  const [clupaOpacity, setClupaOpacity] = useState(0.5);
   const [ballisticResult, setBallisticResult] = useState<any | null>(null);
+  const [manualMode, setManualMode] = useState<'firing' | 'target' | null>(null);
+  const [manualPoints, setManualPoints] = useState<{ firing?: {lng:number, lat:number}, target?: {lng:number, lat:number} }>({});
+
+  const handleMapClick = useCallback((coords: { lng: number, lat: number }) => {
+    if (!manualMode) return;
+
+    setBallisticResult(null); // Reset analysis on new point drop
+    setManualPoints(prev => {
+      const newPoints = { ...prev };
+      if (manualMode === 'firing') newPoints.firing = coords;
+      else if (manualMode === 'target') newPoints.target = coords;
+      
+      // Update ballisticResult for a "preview" in MapView
+      setBallisticResult({
+        firing_position: newPoints.firing,
+        target_position: newPoints.target,
+        distance_m: 0,
+        status: "Draft",
+        recommendation: "Select points and click Analyze."
+      });
+      
+      return newPoints;
+    });
+    setManualMode(null);
+  }, [manualMode]);
+
+  const handleAnalyzeManual = useCallback(async () => {
+    if (!manualPoints.firing || !manualPoints.target) return;
+    
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/api/search/ballistic/manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firing_pos: manualPoints.firing,
+          target_pos: manualPoints.target
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBallisticResult({
+          ...data,
+          firing_position: manualPoints.firing,
+          target_position: manualPoints.target
+        });
+      }
+    } catch (err) {
+      console.error("Manual analysis failed:", err);
+    }
+  }, [manualPoints]);
 
   const handleToggleLayer = (layerId: string) => {
     setActiveLayers(prev =>
@@ -104,7 +156,11 @@ export default function Home() {
             activeLayers={activeLayers}
             baseLayer={baseLayer}
             showTerrain={showTerrain}
+            candidateOpacity={candidateOpacity}
+            clupaOpacity={clupaOpacity}
             ballisticResult={ballisticResult}
+            selectionMode={manualMode}
+            onMapClick={handleMapClick}
             onFeatureClassify={(f) => { setSelectedFeature(f); setBallisticResult(null); }}
             onCandidatesLoaded={handleCandidatesLoaded}
             onMapReady={handleMapReady}
@@ -120,6 +176,10 @@ export default function Home() {
             onSetBaseLayer={setBaseLayer}
             showTerrain={showTerrain}
             onToggleTerrain={() => setShowTerrain(v => !v)}
+            candidateOpacity={candidateOpacity}
+            onSetCandidateOpacity={setCandidateOpacity}
+            clupaOpacity={clupaOpacity}
+            onSetClupaOpacity={setClupaOpacity}
           />
         </div>
 
@@ -128,6 +188,10 @@ export default function Home() {
             feature={selectedFeature}
             ballisticResult={ballisticResult}
             onBallisticResult={setBallisticResult}
+            onSetManualMode={setManualMode}
+            onAnalyze={handleAnalyzeManual}
+            manualPoints={manualPoints}
+            selectionMode={manualMode}
             onClose={() => setSelectedFeature(null)}
           />
         )}

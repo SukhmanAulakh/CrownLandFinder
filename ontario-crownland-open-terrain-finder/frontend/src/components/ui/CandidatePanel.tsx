@@ -4,6 +4,10 @@ interface CandidatePanelProps {
   feature: any | null;
   ballisticResult: any | null;
   onBallisticResult: (res: any) => void;
+  onSetManualMode: (mode: 'firing' | 'target' | null) => void;
+  onAnalyze: () => void;
+  manualPoints: { firing?: {lng:number, lat:number}, target?: {lng:number, lat:number} };
+  selectionMode: 'firing' | 'target' | null;
   onClose: () => void;
 }
 
@@ -32,7 +36,16 @@ function googleMapsUrl(lat: number, lng: number) {
   return `https://www.google.com/maps?q=${lat.toFixed(6)},${lng.toFixed(6)}`;
 }
 
-export default function CandidatePanel({ feature, ballisticResult, onBallisticResult, onClose }: CandidatePanelProps) {
+export default function CandidatePanel({ 
+  feature, 
+  ballisticResult, 
+  onBallisticResult, 
+  onSetManualMode,
+  onAnalyze,
+  manualPoints,
+  selectionMode,
+  onClose 
+}: CandidatePanelProps) {
   const [isSearching, setIsSearching] = React.useState(false);
   const [searchError, setSearchError] = React.useState<string | null>(null);
 
@@ -147,7 +160,7 @@ export default function CandidatePanel({ feature, ballisticResult, onBallisticRe
 
             {/* Deep Search Section */}
             <div className="space-y-3 pt-2">
-              <button
+                <button
                 onClick={handleDeepSearch}
                 disabled={isSearching}
                 className={`w-full py-2.5 rounded-lg border flex items-center justify-center gap-2 font-bold uppercase tracking-wider text-[11px] transition-all duration-200 ${
@@ -170,6 +183,59 @@ export default function CandidatePanel({ feature, ballisticResult, onBallisticRe
                   </>
                 )}
                 </button>
+
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => onSetManualMode(selectionMode === 'firing' ? null : 'firing')}
+                    className={`w-full py-2.5 rounded-lg border font-bold uppercase tracking-wider text-[11px] flex items-center justify-center gap-2 transition-all duration-200 ${
+                      selectionMode === 'firing' 
+                        ? "bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-900/40" 
+                        : manualPoints.firing 
+                          ? "bg-slate-800 border-emerald-500/50 text-emerald-400" 
+                          : "bg-slate-800 border-slate-700 text-slate-400 hover:border-emerald-500/50 hover:text-emerald-400"
+                    }`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {manualPoints.firing ? "Change Shooting Pos" : "Select Shooting Pos"}
+                  </button>
+
+                  <button
+                    onClick={() => onSetManualMode(selectionMode === 'target' ? null : 'target')}
+                    className={`w-full py-2.5 rounded-lg border font-bold uppercase tracking-wider text-[11px] flex items-center justify-center gap-2 transition-all duration-200 ${
+                      selectionMode === 'target' 
+                        ? "bg-red-600 border-red-500 text-white shadow-lg shadow-red-900/40" 
+                        : manualPoints.target 
+                          ? "bg-slate-800 border-red-500/50 text-red-400" 
+                          : "bg-slate-800 border-slate-700 text-slate-400 hover:border-red-500/50 hover:text-red-400"
+                    }`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {manualPoints.target ? "Change Target Pos" : "Select Target Pos"}
+                  </button>
+
+                  {manualPoints.firing && manualPoints.target && (
+                    <button
+                      onClick={onAnalyze}
+                      disabled={isSearching}
+                      className="w-full py-2.5 mt-1 rounded-lg border border-purple-500/40 bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 font-bold uppercase tracking-wider text-[11px] flex items-center justify-center gap-2 transition-all duration-200"
+                    >
+                      {isSearching ? (
+                        <div className="w-3 h-3 border-2 border-t-transparent border-purple-400 rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 012 2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                      )}
+                      Analyze Manual Range
+                    </button>
+                  )}
+                </div>
 
                 {searchError && (
                   <div className="p-2.5 bg-red-900/30 border border-red-500/40 rounded-lg animate-in fade-in slide-in-from-top-1 duration-300">
@@ -195,21 +261,75 @@ export default function CandidatePanel({ feature, ballisticResult, onBallisticRe
                         <p className="text-xl font-bold text-white leading-none">{ballisticResult.distance_m}m</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[10px] text-slate-500 uppercase font-semibold">Backdrop</p>
-                        <p className="text-[10px] text-emerald-400 font-bold uppercase">{ballisticResult.backdrop_type}</p>
-                      </div>
-                    </div>
-                    <div className="pt-2 border-t border-slate-800 grid grid-cols-2 gap-2 text-[10px]">
-                      <div>
-                        <p className="text-slate-500 uppercase font-semibold">Firing Pos</p>
-                        <p className="text-slate-300 font-mono tracking-tighter">
-                          {ballisticResult.firing_position.lat.toFixed(5)}, {ballisticResult.firing_position.lng.toFixed(5)}
+                        <p className="text-[10px] text-slate-500 uppercase font-semibold">
+                          {ballisticResult.score !== undefined ? "Feasibility" : "Backdrop"}
+                        </p>
+                        <p className={`text-[10px] font-bold uppercase ${
+                          ballisticResult.status === "Infeasible" ? "text-red-400" :
+                          ballisticResult.status === "Marginal" ? "text-yellow-400" :
+                          "text-emerald-400"
+                        }`}>
+                          {ballisticResult.score !== undefined ? `${ballisticResult.score}% ${ballisticResult.status}` : ballisticResult.backdrop_type}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-slate-500 uppercase font-semibold text-right">Target Pos</p>
-                        <p className="text-slate-300 font-mono tracking-tighter text-right">
-                          {ballisticResult.target_position.lat.toFixed(5)}, {ballisticResult.target_position.lng.toFixed(5)}
+                    </div>
+                    <div className="pt-2 border-t border-slate-800 space-y-3">
+                      <p className="text-[10px] text-slate-400 italic">
+                        {ballisticResult.recommendation}
+                      </p>
+
+                      {/* Sub-scores Breakdown */}
+                      {ballisticResult.sub_scores && (
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div className="p-2 bg-slate-900/50 rounded border border-slate-800/50">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-[8px] uppercase tracking-wider text-slate-500">Safe Tenure</span>
+                              <span className={`text-[10px] font-bold ${ballisticResult.sub_scores.tenure >= 70 ? 'text-emerald-400' : 'text-orange-400'}`}>{ballisticResult.sub_scores.tenure}%</span>
+                            </div>
+                            <div className="h-0.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div className={`h-full ${ballisticResult.sub_scores.tenure >= 70 ? 'bg-emerald-500' : 'bg-orange-500'}`} style={{ width: `${ballisticResult.sub_scores.tenure}%` }} />
+                            </div>
+                          </div>
+                          <div className="p-2 bg-slate-900/50 rounded border border-slate-800/50">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-[8px] uppercase tracking-wider text-slate-500">Backdrop</span>
+                              <span className="text-[10px] font-bold text-slate-300">{ballisticResult.sub_scores.backdrop}%</span>
+                            </div>
+                            <div className="h-0.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div className="h-full bg-blue-500" style={{ width: `${ballisticResult.sub_scores.backdrop}%` }} />
+                            </div>
+                          </div>
+                          <div className="p-2 bg-slate-900/50 rounded border border-slate-800/50">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-[8px] uppercase tracking-wider text-slate-500">Firing Open</span>
+                              <span className="text-[10px] font-bold text-slate-300">{ballisticResult.sub_scores.firing_openness}%</span>
+                            </div>
+                            <div className="h-0.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div className="h-full bg-slate-500" style={{ width: `${ballisticResult.sub_scores.firing_openness}%` }} />
+                            </div>
+                          </div>
+                          <div className="p-2 bg-slate-900/50 rounded border border-slate-800/50">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-[8px] uppercase tracking-wider text-slate-500">Target Open</span>
+                              <span className="text-[10px] font-bold text-slate-300">{ballisticResult.sub_scores.target_openness}%</span>
+                            </div>
+                            <div className="h-0.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div className="h-full bg-slate-500" style={{ width: `${ballisticResult.sub_scores.target_openness}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Definition of Safe Tenure */}
+                      <div className="p-2.5 bg-emerald-900/10 border border-emerald-500/20 rounded-lg">
+                        <h4 className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                          <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Safe Tenure INFO
+                        </h4>
+                        <p className="text-[9px] leading-relaxed text-slate-400">
+                          Ensures both points are on <span className="text-emerald-300">Ontario Crown Land</span> (General Use) and clear of private property, municipal discharge zones, and parks.
                         </p>
                       </div>
                     </div>

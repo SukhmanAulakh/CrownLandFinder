@@ -16,7 +16,11 @@ interface MapViewProps {
   activeLayers: string[];
   baseLayer: 'outdoors' | 'satellite';
   showTerrain: boolean;
+  candidateOpacity: number;
+  clupaOpacity: number;
   ballisticResult: any | null;
+  selectionMode: 'firing' | 'target' | null;
+  onMapClick?: (coords: { lng: number, lat: number }) => void;
 }
 
 type DataStatus = "idle" | "loading" | "loaded" | "error" | "empty";
@@ -47,7 +51,11 @@ export default function MapView({
   activeLayers,
   baseLayer,
   showTerrain,
-  ballisticResult
+  candidateOpacity,
+  clupaOpacity,
+  ballisticResult,
+  selectionMode,
+  onMapClick
 }: MapViewProps) {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -57,8 +65,18 @@ export default function MapView({
     const [dataStatus, setDataStatus] = useState<DataStatus>("idle");
     const [candidateCount, setCandidateCount] = useState(0);
     const [mockDataWarning, setMockDataWarning] = useState(false);
+    
+    // Track the last style URL to prevent redundant setStyle calls
+    const currentStyleUrlRef = useRef<string | null>(null);
 
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+    // Refs for selection mode to avoid map re-init
+    const selectionModeRef = useRef(selectionMode);
+    const onMapClickRef = useRef(onMapClick);
+
+    useEffect(() => { selectionModeRef.current = selectionMode; }, [selectionMode]);
+    useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
 
     // 1. Initialize Map
     useEffect(() => {
@@ -72,9 +90,14 @@ export default function MapView({
 
       mapboxgl.accessToken = token;
 
+      const initialStyle = baseLayer === 'satellite' 
+        ? "mapbox://styles/mapbox/satellite-streets-v12" 
+        : "mapbox://styles/mapbox/outdoors-v12";
+      currentStyleUrlRef.current = initialStyle;
+
       const map = new mapboxgl.Map({
         container: mapContainerRef.current,
-        style: "mapbox://styles/mapbox/outdoors-v12",
+        style: initialStyle,
         center: [-81.0, 46.5],
         zoom: 5,
         antialias: true
@@ -108,6 +131,13 @@ export default function MapView({
         }
       });
 
+      map.on("click", (e) => {
+        if (selectionModeRef.current) {
+          onMapClickRef.current?.({ lng: e.lngLat.lng, lat: e.lngLat.lat });
+          return;
+        }
+      });
+
       map.on("style.load", () => {
         setStyleLoaded(true);
         setupCustomLayers(map);
@@ -117,9 +147,61 @@ export default function MapView({
         map.remove();
         mapRef.current = null;
       };
-    }, []);
+    }, []); // Only run once
 
-    // 2. Setup Custom Layers (Reusable)
+    // 2. Helper Functions
+    function setupBallisticLayers() {
+      const map = mapRef.current;
+      if (!map) return;
+
+      if (!map.getSource("ballistic-path")) {
+        map.addSource("ballistic-path", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] }
+        });
+        map.addLayer({
+          id: "ballistic-line",
+          type: "line",
+          source: "ballistic-path",
+          paint: {
+            "line-color": "#a855f7",
+            "line-width": 4,
+            "line-dasharray": [2, 1],
+            "line-opacity": 0.8
+          }
+        });
+      }
+
+      if (!map.getSource("ballistic-markers")) {
+        map.addSource("ballistic-markers", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] }
+        });
+        
+        map.addLayer({
+          id: "ballistic-points",
+          type: "circle",
+          source: "ballistic-markers",
+          paint: {
+            "circle-radius": [
+              "match", ["get", "type"],
+              "firing", 8,
+              "target", 8,
+              6
+            ],
+            "circle-color": [
+              "match", ["get", "type"],
+              "firing", "#10b981", // Emerald
+              "target", "#ef4444", // Red
+              "#ffffff"
+            ],
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff"
+          }
+        });
+      }
+    }
+
     const setupCustomLayers = (map: mapboxgl.Map) => {
       // Add DEM for 3D
       if (!map.getSource("mapbox-dem")) {
@@ -141,7 +223,7 @@ export default function MapView({
         });
       }
 
-      const overlayIds = ["clupa_polygons", "protected_areas", "clupa_overlays"];
+      const overlayIds = ["clupa_polygons", "clupa_overlays"];
       overlayIds.forEach(id => {
         if (!map.getSource(`source-${id}`)) {
           map.addSource(`source-${id}`, {
@@ -208,7 +290,7 @@ export default function MapView({
               type: "fill",
               source: `source-${id}`,
               "source-layer": id,
-              paint: { "fill-color": id === "protected_areas" ? "#ef4444" : "#94a3b8", "fill-opacity": 0.2 },
+              paint: { "fill-color": "#94a3b8", "fill-opacity": 0.2 },
             }, "candidates-fill");
           }
         }
@@ -216,7 +298,7 @@ export default function MapView({
 
       // Identification Logic
       map.on("click", (e) => {
-        const layersToQuery = ["candidates-fill", "layer-clupa_polygons-fill", "layer-protected_areas-fill"];
+        const layersToQuery = ["candidates-fill", "layer-clupa_polygons-fill"];
         const availableLayers = layersToQuery.filter(id => map.getLayer(id));
         const features = map.queryRenderedFeatures(e.point, { layers: availableLayers });
         
@@ -224,33 +306,36 @@ export default function MapView({
           onFeatureClassify(null);
           return;
         }
-
+ 
         const candidate = features.find(f => f.layer?.id === "candidates-fill");
         const clupa = features.find(f => f.layer?.id === "layer-clupa_polygons-fill");
-        const protectedArea = features.find(f => f.layer?.id === "layer-protected_areas-fill");
-
+ 
         onFeatureClassify({
-          ... (candidate || clupa || protectedArea),
+          ... (candidate || clupa),
           properties: {
             ... (clupa?.properties || {}),
-            ... (protectedArea?.properties || {}),
             ... (candidate?.properties || {}),
             _is_candidate: !!candidate,
-            _is_clupa: !!clupa,
-            _is_protected: !!protectedArea
+            _is_clupa: !!clupa
           }
         } as any);
       });
 
       const handleMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
       const handleMouseLeave = () => { map.getCanvas().style.cursor = ""; };
-      ["candidates-fill", "layer-clupa_polygons-fill", "layer-protected_areas-fill"].forEach(id => {
+      ["candidates-fill", "layer-clupa_polygons-fill"].forEach(id => {
         map.on("mouseenter", id, handleMouseEnter);
         map.on("mouseleave", id, handleMouseLeave);
       });
 
       setupBallisticLayers();
     };
+
+    // 2.5 Handle Cursor for selection mode
+    useEffect(() => {
+      if (!mapRef.current) return;
+      mapRef.current.getCanvas().style.cursor = selectionMode ? "crosshair" : "";
+    }, [selectionMode]);
 
     // Load custom icons after style changes
     useEffect(() => {
@@ -275,53 +360,6 @@ export default function MapView({
       });
     }, [styleLoaded]);
 
-    const setupBallisticLayers = () => {
-      const map = mapRef.current;
-      if (!map) return;
-
-      if (!map.getSource("ballistic-path")) {
-        map.addSource("ballistic-path", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] }
-        });
-        map.addLayer({
-          id: "ballistic-line",
-          type: "line",
-          source: "ballistic-path",
-          paint: {
-            "line-color": "#a855f7",
-            "line-width": 4,
-            "line-dasharray": [2, 1],
-            "line-opacity": 0.8
-          }
-        });
-      }
-
-      if (!map.getSource("ballistic-markers")) {
-        map.addSource("ballistic-markers", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] }
-        });
-        
-        // Symbol layer for custom icons
-        map.addLayer({
-          id: "ballistic-points",
-          type: "symbol",
-          source: "ballistic-markers",
-          layout: {
-            "icon-image": [
-              "match", ["get", "type"],
-              "firing", "icon-firing",
-              "target", "icon-target",
-              ""
-            ],
-            "icon-size": 0.4, // Increased from 0.08
-            "icon-allow-overlap": true,
-            "icon-ignore-placement": true
-          }
-        });
-      }
-    };
 
     // 3. Handle Style Swaps
     useEffect(() => {
@@ -331,6 +369,10 @@ export default function MapView({
         ? "mapbox://styles/mapbox/satellite-streets-v12" 
         : "mapbox://styles/mapbox/outdoors-v12";
       
+      // Prevent redundant style updates (especially on mount)
+      if (currentStyleUrlRef.current === styleUrl) return;
+      
+      currentStyleUrlRef.current = styleUrl;
       setStyleLoaded(false);
       map.setStyle(styleUrl);
     }, [baseLayer]);
@@ -350,7 +392,7 @@ export default function MapView({
     useEffect(() => {
       if (!styleLoaded || !mapRef.current) return;
       const map = mapRef.current;
-      const overlayIds = ["clupa_polygons", "protected_areas", "clupa_overlays"];
+      const overlayIds = ["clupa_polygons", "clupa_overlays"];
       
       overlayIds.forEach(id => {
         const layerId = `layer-${id}-fill`;
@@ -364,6 +406,29 @@ export default function MapView({
         map.setLayoutProperty("candidates-outline", "visibility", activeLayers.includes("candidates") ? "visible" : "none");
       }
     }, [activeLayers, styleLoaded]);
+    
+    // 6. Handle Layer Opacity
+    useEffect(() => {
+      if (!styleLoaded || !mapRef.current) return;
+      const map = mapRef.current;
+      
+      const candidateFillOpacity = 0.7 * candidateOpacity;
+      const candidateOutlineOpacity = 0.8 * candidateOpacity;
+      const clupaFillOpacity = 0.35 * clupaOpacity;
+      
+      if (map.getLayer("candidates-fill")) {
+        map.setPaintProperty("candidates-fill", "fill-opacity", candidateFillOpacity);
+      }
+      if (map.getLayer("candidates-outline")) {
+        map.setPaintProperty("candidates-outline", "line-opacity", candidateOutlineOpacity);
+      }
+      if (map.getLayer("layer-clupa_polygons-fill")) {
+        map.setPaintProperty("layer-clupa_polygons-fill", "fill-opacity", clupaFillOpacity);
+      }
+      if (map.getLayer("layer-clupa_overlays-fill")) {
+        map.setPaintProperty("layer-clupa_overlays-fill", "fill-opacity", clupaFillOpacity);
+      }
+    }, [candidateOpacity, clupaOpacity, styleLoaded]);
 
     // ── Fetch Count & Metadata ──
     useEffect(() => {
@@ -402,42 +467,52 @@ export default function MapView({
       const { firing_position, target_position } = ballisticResult;
 
       if (pathSource) {
-        pathSource.setData({
-          type: "Feature",
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              [firing_position.lng, firing_position.lat],
-              [target_position.lng, target_position.lat]
-            ]
-          },
-          properties: {}
-        });
+        if (firing_position && target_position) {
+          pathSource.setData({
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [firing_position.lng, firing_position.lat],
+                [target_position.lng, target_position.lat]
+              ]
+            },
+            properties: {}
+          });
+        } else {
+          pathSource.setData({ type: "FeatureCollection", features: [] });
+        }
       }
 
       if (markerSource) {
+        const features = [];
+        if (firing_position) {
+          features.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [firing_position.lng, firing_position.lat] },
+            properties: { type: "firing" }
+          });
+        }
+        if (target_position) {
+          features.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [target_position.lng, target_position.lat] },
+            properties: { type: "target" }
+          });
+        }
         markerSource.setData({
           type: "FeatureCollection",
-          features: [
-            {
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [firing_position.lng, firing_position.lat] },
-              properties: { type: "firing" }
-            },
-            {
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [target_position.lng, target_position.lat] },
-              properties: { type: "target" }
-            }
-          ]
+          features: features as any
         });
       }
 
-      // Fly to the setup
-      const bounds = new mapboxgl.LngLatBounds();
-      bounds.extend([firing_position.lng, firing_position.lat]);
-      bounds.extend([target_position.lng, target_position.lat]);
-      map.fitBounds(bounds, { padding: 100, maxZoom: 18 });
+      // Fly to the setup ONLY if it's a new full result (not a draft)
+      if (firing_position && target_position && ballisticResult.status !== "Draft") {
+        const bounds = new mapboxgl.LngLatBounds();
+        bounds.extend([firing_position.lng, firing_position.lat]);
+        bounds.extend([target_position.lng, target_position.lat]);
+        map.fitBounds(bounds, { padding: 100, maxZoom: 18 });
+      }
 
     }, [ballisticResult, styleLoaded]);
 
