@@ -1,0 +1,15 @@
+buffers:
+  exclusions_m:
+    provincial_parks: 200
+    conservation_reserves: 100
+    roads_major: 150 # example: highways
+    roads_minor: 50 # example: local roads
+    trails: 50
+    structures: 200
+    waterbodies: 50
+
+  proximity_penalties_m:
+    trails: 200
+    roads: 500
+    fishing_access_points: 1000
+    waterbodies: 200

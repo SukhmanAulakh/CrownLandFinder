@@ -1,0 +1,12 @@
+scoring_parameters:
+  weights:
+    open_land:
+      road_distance: -0.5
+      trail_distance: -0.2
+  thresholds:
+    higher_open_terrain:
+      open_land_score: 80
+      terrain_enclosure_score: 60
+    candidate:
+      open_land_score: 50
+      terrain_enclosure_score: 30

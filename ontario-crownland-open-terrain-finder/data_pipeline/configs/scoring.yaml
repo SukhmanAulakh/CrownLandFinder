@@ -1,0 +1,29 @@
+scoring_parameters:
+  minimum_candidate_size_m2: 10000
+
+  weights:
+    open_land:
+      area: 0.3
+      road_distance: -0.2
+      trail_distance: -0.2
+      water_access_point: -0.15
+      protected_area_adjacency: -0.15
+    terrain_enclosure:
+      local_relief: 0.35
+      nearby_rising_terrain: 0.35
+      local_slope: 0.1
+      terrain_concavity: 0.2
+      ridgeline_exposure: -0.2
+      flat_openness: -0.2
+
+  thresholds:
+    higher_open_terrain:
+      open_land_score: 75
+      terrain_enclosure_score: 65
+    candidate:
+      open_land_score: 40
+      terrain_enclosure_score: 30
+
+  missing_data_fallback:
+    terrain: "use_zero" # Fallback to 0 terrain score if DEM is missing
+    water_access: "assume_clear" # Assume clear if dataset fails

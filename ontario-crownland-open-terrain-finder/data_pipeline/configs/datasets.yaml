@@ -1,0 +1,57 @@
+datasets:
+  clupa_provincial:
+    source_name: "Crown Land Use Policy Area (Provincial)"
+    source_url: "https://geohub.lio.gov.on.ca/datasets/crown-land-use-policy-area"
+    rest_url: "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open06/MapServer/5"
+    format: "geojson"
+    priority: 1
+    target_table: "clupa_polygons"
+  
+  clupa_overlay:
+    source_name: "Crown Land Use Policy Area (Overlay)"
+    rest_url: "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open06/MapServer/4"
+    format: "geojson"
+    priority: 1
+    target_table: "clupa_overlays"
+    
+  municipal_boundaries:
+    source_name: "Municipal Boundary - Lower and Single Tier"
+    rest_url: "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open03/MapServer/14"
+    format: "geojson"
+    priority: 2
+    target_table: "municipal_boundaries"
+
+  provincial_parks:
+    source_name: "Provincial Park Regulated"
+    rest_url: "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open03/MapServer/4"
+    format: "geojson"
+    priority: 1
+    target_table: "protected_areas"
+
+  conservation_reserves:
+    source_name: "Conservation Reserve Regulated"
+    rest_url: "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open03/MapServer/2"
+    format: "geojson"
+    priority: 1
+    target_table: "protected_areas"
+
+  roads:
+    source_name: "Ontario Road Network (ORN) Segment"
+    rest_url: "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open09/MapServer/11"
+    format: "geojson"
+    priority: 3
+    target_table: "roads"
+
+  trails:
+    source_name: "Ontario Trail Network (OTN) Segment"
+    rest_url: "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open04/MapServer/19"
+    format: "geojson"
+    priority: 3
+    target_table: "trails"
+
+  waterbodies:
+    source_name: "Ontario Hydro Network (OHN) - Waterbody"
+    rest_url: "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open01/MapServer/25"
+    format: "geojson"
+    priority: 3
+    target_table: "water_features"

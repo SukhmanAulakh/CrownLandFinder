@@ -1,0 +1,11 @@
+**/node_modules
+**/__pycache__
+**/.next
+**/.git
+**/.env
+**/raw
+**/data_pipeline/raw
+**/data_pipeline/processed
+.vscode
+.idea
+*.log

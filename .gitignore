@@ -1,0 +1,76 @@
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv
+venv
+ENV/
+
+# Node.js
+**/node_modules/
+**/.next/
+**/out/
+**/build/
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/tsconfig.tsbuildinfo
+
+# Application specific
+**/*.log
+**/alembic_error.txt
+**/build_log.txt
+**/build_log_utf8.txt
+**/candidate_error.log
+**/fetch_clupa.log
+**/ingestion.log
+**/ingestion_error.log
+**/migration.sql
+**/lio_capabilities.json
+**/data_pipeline/raw/
+**/data_pipeline/raw/**
+.env
+
+# Large files / Dev bundles
+**/mapbox-gl-dev.js
+**/*.js.map
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Databases (do not commit local DB files)
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.db-wal
+**/*.db-shm
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
