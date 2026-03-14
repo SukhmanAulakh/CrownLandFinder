@@ -1,11 +1,16 @@
+"""
+PostGIS/GeoAlchemy2 models for Crown Land data: CLUPA, overlays, roads, trails, water, candidate units and scores.
+
+Geometries stored in dual CRS: raw ingestion in SRID 4269 (NAD83), projected analysis in SRID 3161 (Ontario Lambert).
+"""
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, JSON
 from sqlalchemy.sql import func
 from geoalchemy2 import Geometry
 from app.db.base import Base
 
-# Note: We store source raw geometry in SRID 4269 (NAD83) and projected geometry in SRID 3161 (NAD83(CSRS) / Ontario MNR Lambert)
-RAW_SRID = 4269
-PROJ_SRID = 3161
+RAW_SRID = 4269   # NAD83 (ingestion)
+PROJ_SRID = 3161  # NAD83(CSRS) / Ontario MNR Lambert (analysis)
+
 
 class ClupaPolygon(Base):
     __tablename__ = "clupa_polygons"
@@ -56,7 +61,7 @@ class Road(Base):
     road_class = Column(String)
     name = Column(String)
     geom_raw = Column(Geometry(geometry_type='MULTILINESTRING', srid=RAW_SRID, spatial_index=False))
-    geom_projected = Column(Geometry(geometry_type='MULTILINESTRING', srid=PROJ_SRID, spatial_index=False))
+    geom_projected = Column(Geometry(geometry_type='MULTILINESTRING', srid=PROJ_SRID))
     source_id = Column(Integer, ForeignKey("data_sources.id"))
 
 class Trail(Base):
@@ -65,7 +70,7 @@ class Trail(Base):
     external_id = Column(String, index=True)
     trail_name = Column(String)
     geom_raw = Column(Geometry(geometry_type='MULTILINESTRING', srid=RAW_SRID, spatial_index=False))
-    geom_projected = Column(Geometry(geometry_type='MULTILINESTRING', srid=PROJ_SRID, spatial_index=False))
+    geom_projected = Column(Geometry(geometry_type='MULTILINESTRING', srid=PROJ_SRID))
     source_id = Column(Integer, ForeignKey("data_sources.id"))
 
 class WaterFeature(Base):
@@ -75,7 +80,7 @@ class WaterFeature(Base):
     feature_type = Column(String)
     name = Column(String)
     geom_raw = Column(Geometry(geometry_type='GEOMETRY', srid=RAW_SRID, spatial_index=False)) # Can be point, line, poly
-    geom_projected = Column(Geometry(geometry_type='GEOMETRY', srid=PROJ_SRID, spatial_index=False))
+    geom_projected = Column(Geometry(geometry_type='GEOMETRY', srid=PROJ_SRID))
     source_id = Column(Integer, ForeignKey("data_sources.id"))
 
 class AccessPoint(Base):

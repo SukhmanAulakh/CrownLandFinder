@@ -1,8 +1,15 @@
+"""
+Scoring engine for candidate units: open-land and terrain-enclosure scores plus classification.
+
+Config-driven via YAML (weights and thresholds). Used by the data pipeline and optionally
+by the API for consistency.
+"""
 import yaml
 import logging
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
+
 
 class ScoringEngine:
     def __init__(self, config_path: str):

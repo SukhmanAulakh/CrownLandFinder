@@ -17,5 +17,7 @@ httpx>=0.24.0
 
 requests==2.31.0
 geojson==3.1.0
+PyYAML>=6.0
+arcgis2geojson>=1.0.0
 
 geoalchemy2==0.15.0

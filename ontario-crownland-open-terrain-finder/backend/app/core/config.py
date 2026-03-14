@@ -1,6 +1,13 @@
+"""
+Application settings loaded from environment and optional .env file.
+
+Used by the FastAPI app and DB/session configuration. All defaults are
+safe for local Docker development; override via env vars in production.
+"""
 from typing import Any, Dict, List, Optional, Union
 from pydantic import AnyHttpUrl, PostgresDsn, validator
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Ontario Crown Land Open Terrain Finder"

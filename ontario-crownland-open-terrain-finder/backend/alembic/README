@@ -1,1 +1,6 @@
-Generic single-database configuration.
+# Alembic migrations for Crown Land Finder
+
+Single-database setup. Run from backend container:
+
+  docker-compose exec backend alembic upgrade head
+  docker-compose exec backend alembic revision --autogenerate -m "description"

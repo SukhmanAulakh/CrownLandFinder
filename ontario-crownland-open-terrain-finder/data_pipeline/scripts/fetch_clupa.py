@@ -1,3 +1,7 @@
+"""
+Fetch Crown Land Use Policy Atlas (CLUPA) from LIO ArcGIS REST.
+Tiles Ontario bbox, converts to GeoJSON, writes to data_pipeline/raw/.
+"""
 import os
 import requests
 import yaml
@@ -163,13 +167,13 @@ if __name__ == "__main__":
     with open(CONFIG_FILE, "r") as f:
         datasets = yaml.safe_load(f)["datasets"]
 
-    # Target the essential layers we missed.
-    # We skip clupa_provincial because we used Lantern Search for it.
+    # All layers needed for full Ontario candidate generation
     target_layers = [
+        "clupa_provincial",   # Crown land polygons -> clupa_polygons (required for candidate_units)
         "clupa_overlay",
         "provincial_parks",
         "conservation_reserves",
-        "municipal_boundaries"
+        "municipal_boundaries",
     ]
     
     for key in target_layers:

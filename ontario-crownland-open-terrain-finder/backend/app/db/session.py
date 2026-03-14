@@ -1,3 +1,9 @@
+"""
+Database connection and session factory for PostgreSQL/PostGIS.
+
+URL is built from POSTGRES_* and DB_HOST env vars. Used by deps.get_db and
+standalone scripts (e.g. data_pipeline).
+"""
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

@@ -1,3 +1,8 @@
+"""
+Geospatial layer API: candidate units, base layers (CLUPA, roads, etc.), and MVT tiles.
+
+GeoJSON endpoints are limited for performance; use /mvt for large datasets.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -11,8 +16,8 @@ def get_candidate_units(limit: int = 1000, offset: int = 0, db: Session = Depend
     Returns candidate units and their latest computed scores as GeoJSON.
     NOTE: For high-performance mapping, use the /mvt endpoint.
     """
-    # Safety clamp to prevent jsonb overflow
-    limit = min(limit, 5000)
+    # Allow pagination through all Ontario candidates; cap per-request size for GeoJSON safety
+    limit = min(limit, 200_000)
     
     sql = text("""
         SELECT jsonb_build_object(
@@ -60,11 +65,15 @@ def get_candidates_metadata(db: Session = Depends(get_db)):
             ST_Y(ST_Transform(cu.centroid, 4326)) as lat,
             cs.open_land_score,
             cs.terrain_enclosure_score,
-            cs.classification
+            cs.classification,
+            cp.policy_ident,
+            cp.designation_eng,
+            cp.category_eng,
+            cp.area_name
         FROM candidate_units cu
         LEFT JOIN candidate_scores cs ON cu.id = cs.candidate_unit_id
+        LEFT JOIN clupa_polygons cp ON cu.parent_clupa_id = cp.id
         ORDER BY cu.centroid <-> ST_Transform(ST_SetSRID(ST_MakePoint(-79.38, 43.65), 4326), 3161)
-        LIMIT 5000 
     """)
     
     results = db.execute(sql).fetchall()
@@ -81,7 +90,13 @@ def get_candidates_metadata(db: Session = Depends(get_db)):
                 "area_m2": row.area_m2,
                 "open_land_score": row.open_land_score,
                 "terrain_enclosure_score": row.terrain_enclosure_score,
-                "classification": row.classification
+                "classification": row.classification,
+                "centroid_lat": row.lat,
+                "centroid_lng": row.lng,
+                "policy_ident": row.policy_ident,
+                "designation_eng": row.designation_eng,
+                "category_eng": row.category_eng,
+                "area_name": row.area_name
             }
         })
         
@@ -110,8 +125,7 @@ def get_base_layer(layer_name: str, limit: int = 2000, offset: int = 0, db: Sess
     if not table_name:
         raise HTTPException(status_code=400, detail=f"Invalid layer name. Must be one of {list(valid_tables.keys())}")
     
-    # Safety clamp
-    limit = min(limit, 5000)
+    limit = min(limit, 100_000)
         
     sql = text(f"""
         SELECT jsonb_build_object(
@@ -162,32 +176,49 @@ def get_mvt_tile(layer_name: str, z: int, x: int, y: int, db: Session = Depends(
     if not table_name:
         raise HTTPException(status_code=400, detail="Invalid layer name")
 
-    # SQL definition for MVT generation in PostGIS
-    # We restrict candidates to the top 5000 nearest to the GTA for performance and relevance.
-    sql = text(f"""
-        WITH 
-        bounds AS (
+    # MVT: all candidates (or other layers) that intersect the tile—no cap.
+    if layer_name == "candidates":
+        sql = text("""
+        WITH bounds AS (
           SELECT ST_TileEnvelope(:z, :x, :y) AS geom
         ),
-        target_candidates AS (
-          SELECT id 
-          FROM candidate_units 
-          ORDER BY centroid <-> ST_Transform(ST_SetSRID(ST_MakePoint(-79.38, 43.65), 4326), 3161)
-          LIMIT 5000
+        mvt_geom AS (
+          SELECT 
+            ST_AsMVTGeom(ST_Transform(t.geom_projected, 3857), bounds.geom) AS geom,
+            t.id,
+            cs.open_land_score,
+            cs.terrain_enclosure_score,
+            cs.classification,
+            cp.policy_ident,
+            cp.designation_eng,
+            cp.category_eng,
+            cp.area_name,
+            ST_Y(ST_Transform(t.centroid, 4326)) AS centroid_lat,
+            ST_X(ST_Transform(t.centroid, 4326)) AS centroid_lng
+          FROM candidate_units t
+          LEFT JOIN candidate_scores cs ON t.id = cs.candidate_unit_id
+          LEFT JOIN clupa_polygons cp ON t.parent_clupa_id = cp.id
+          CROSS JOIN bounds
+          WHERE ST_Intersects(ST_Transform(t.geom_projected, 3857), bounds.geom)
+        )
+        SELECT ST_AsMVT(mvt_geom.*, :layer_name) FROM mvt_geom;
+        """)
+    else:
+        sql = text(f"""
+        WITH bounds AS (
+          SELECT ST_TileEnvelope(:z, :x, :y) AS geom
         ),
         mvt_geom AS (
           SELECT 
             ST_AsMVTGeom(ST_Transform(t.geom_projected, 3857), bounds.geom) AS geom,
             t.id
-            {", cs.open_land_score, cs.terrain_enclosure_score, cs.classification" if layer_name == "candidates" else ""}
             {", t.designation_eng, t.policy_ident, t.category_eng, t.area_name" if layer_name == "clupa_polygons" else ""}
           FROM {table_name} t
-          {"LEFT JOIN candidate_scores cs ON t.id = cs.candidate_unit_id" if layer_name == "candidates" else ""}
-          {"JOIN target_candidates tc ON t.id = tc.id" if layer_name == "candidates" else ""}
-          JOIN bounds ON ST_Intersects(ST_Transform(t.geom_projected, 3857), bounds.geom)
+          CROSS JOIN bounds
+          WHERE ST_Intersects(ST_Transform(t.geom_projected, 3857), bounds.geom)
         )
         SELECT ST_AsMVT(mvt_geom.*, :layer_name) FROM mvt_geom;
-    """)
+        """)
     
     result = db.execute(sql, {"z": z, "x": x, "y": y, "layer_name": layer_name}).scalar()
     

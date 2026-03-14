@@ -1,3 +1,9 @@
+"""
+Load GeoJSON from data_pipeline/raw/ into PostGIS using datasets.yaml.
+
+Maps each configured layer to its ORM model (ClupaPolygon, Road, etc.),
+reprojects to PROJ_SRID, and upserts. Run after fetch_* scripts.
+"""
 import os
 import geopandas as gpd
 from sqlalchemy import create_engine
@@ -6,19 +12,23 @@ from pathlib import Path
 import yaml
 import sys
 
-# Ensure backend modules can be imported inside Docker
-sys.path.insert(0, "/app")
+# Ensure backend modules can be imported
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
+
 from app.db.models.spatial import ClupaPolygon, ClupaOverlay, ProtectedArea, MunicipalBoundary, Road, Trail, WaterFeature
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Use relative paths for raw data
 RAW_DIR = Path(__file__).parent.parent / "raw"
 CONFIG_FILE = Path(__file__).parent.parent / "configs" / "datasets.yaml"
 
 DB_USER = os.getenv("POSTGRES_USER", "crownland")
 DB_PASS = os.getenv("POSTGRES_PASSWORD", "crownland")
-DB_HOST = os.getenv("DB_HOST", "db")
+DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_NAME = os.getenv("POSTGRES_DB", "crownland_db")
 DB_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}"
 
@@ -101,6 +111,10 @@ def map_and_load(geojson_path: str, model_class, config_block: dict):
         if 'geometry' in gdf.columns:
             gdf = gdf.drop(columns=['geometry'])
             
+        # Custom Mappings for specific sources
+        if 'ROAD_NAME' in gdf.columns and 'name' not in gdf.columns and model_class.__tablename__ == 'roads':
+            gdf['name'] = gdf['ROAD_NAME']
+            
         # Ensure we only attempt to insert columns that actually exist in the table
         insert_cols = [c for c in model_columns if c in gdf.columns]
         out_df = gdf[insert_cols]
@@ -131,6 +145,11 @@ def map_and_load(geojson_path: str, model_class, config_block: dict):
         from sqlalchemy import insert
         
         with engine.begin() as conn:
+            # Clear existing data before full reload
+            from sqlalchemy import text
+            conn.execute(text(f"TRUNCATE TABLE {target_table} CASCADE"))
+            logger.info(f"Truncated {target_table} for fresh reload.")
+            
             # We insert in chunks to avoid blowing up memory on huge datasets
             chunk_size = 5000
             for i in range(0, len(objects), chunk_size):
@@ -160,18 +179,16 @@ if __name__ == "__main__":
     # Pre-inject source_id into global scope for loader if needed, or modify map_and_load
     # For simplicity, I'll update map_and_load to accept it or just hardcode it in the mapping
     
-    # Mapping definitions
+    # Mapping definitions (order: clupa_polygons first so candidate_units can reference them)
     mapping = [
-        # ("crown_land_2025.geojson", ClupaPolygon, "clupa_provincial"),
-        # ("clupa_provincial.geojson", ClupaPolygon, "clupa_provincial"),
-        ("clupa_overlay.geojson", ClupaOverlay, "clupa_overlay"),
+        ("clupa_provincial.geojson", ClupaPolygon, "clupa_provincial"),
         ("clupa_overlay.geojson", ClupaOverlay, "clupa_overlay"),
         ("provincial_parks.geojson", ProtectedArea, "provincial_parks"),
         ("conservation_reserves.geojson", ProtectedArea, "conservation_reserves"),
         ("municipal_boundaries.geojson", MunicipalBoundary, "municipal_boundaries"),
         ("roads.geojson", Road, "roads"),
         ("trails.geojson", Trail, "trails"),
-        ("waterbodies.geojson", WaterFeature, "waterbodies")
+        ("waterbodies.geojson", WaterFeature, "waterbodies"),
     ]
     
     for filename, model, config_key in mapping:

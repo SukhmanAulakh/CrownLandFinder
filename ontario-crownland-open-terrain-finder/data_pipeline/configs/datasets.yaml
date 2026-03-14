@@ -36,8 +36,8 @@ datasets:
     target_table: "protected_areas"
 
   roads:
-    source_name: "Ontario Road Network (ORN) Segment"
-    rest_url: "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open09/MapServer/11"
+    source_name: "Ontario Road Network (ORN) Segment (with Names)"
+    rest_url: "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open09/MapServer/18"
     format: "geojson"
     priority: 3
     target_table: "roads"

@@ -1,7 +1,15 @@
+"""
+Search and ballistic analysis API: bbox search and manual firing/target analysis.
+
+Manual ballistic endpoint checks tenure, road/trail clearance, and 10 km downrange hazards.
+"""
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+import logging
 from app.api.deps import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -33,11 +41,18 @@ def search_candidates_by_bbox(
             cu.id,
             cu.area_m2,
             ST_AsGeoJSON(ST_Transform(cu.geom_projected, 4326)) as geometry,
+            ST_Y(ST_Transform(ST_Centroid(cu.geom_projected), 4326)) as centroid_lat,
+            ST_X(ST_Transform(ST_Centroid(cu.geom_projected), 4326)) as centroid_lng,
             cs.open_land_score,
             cs.terrain_enclosure_score,
             cs.classification,
-            cs.explanation_json
+            cs.explanation_json,
+            cp.policy_ident,
+            cp.designation_eng,
+            cp.category_eng,
+            cp.area_name
         FROM candidate_units cu
+        JOIN clupa_polygons cp ON cu.parent_clupa_id = cp.id
         JOIN envelope e ON ST_Intersects(cu.geom_projected, e.geom)
         LEFT JOIN candidate_scores cs ON cu.id = cs.candidate_unit_id
         LIMIT 500
@@ -62,10 +77,16 @@ def search_candidates_by_bbox(
             "properties": {
                 "id": row.id,
                 "area_m2": row.area_m2,
+                "centroid_lat": row.centroid_lat,
+                "centroid_lng": row.centroid_lng,
                 "open_land_score": row.open_land_score,
                 "terrain_enclosure_score": row.terrain_enclosure_score,
                 "classification": row.classification,
-                "explanation": row.explanation_json
+                "explanation": row.explanation_json,
+                "policy_ident": row.policy_ident,
+                "designation_eng": row.designation_eng,
+                "category_eng": row.category_eng,
+                "area_name": row.area_name
             }
         })
         
@@ -96,8 +117,14 @@ def analyze_manual_ballistics(
                     (SELECT count(*) > 0 FROM clupa_polygons, pts WHERE ST_Intersects(geom_projected, f_geom)) as f_on_crown,
                     (SELECT count(*) > 0 FROM clupa_polygons, pts WHERE ST_Intersects(geom_projected, t_geom)) as t_on_crown,
                     (SELECT count(*) > 0 FROM protected_areas, pts WHERE ST_Intersects(geom_projected, f_geom) OR ST_Intersects(geom_projected, t_geom)) as in_protected,
-                    (SELECT count(*) > 0 FROM municipal_boundaries, pts WHERE ST_Intersects(geom_projected, f_geom) OR ST_Intersects(geom_projected, t_geom)) as in_municipal
+                    (SELECT count(*) > 0 FROM municipal_boundaries, pts WHERE ST_Intersects(geom_projected, f_geom) OR ST_Intersects(geom_projected, t_geom)) as in_municipal,
+                    cp.policy_ident,
+                    cp.designation_eng,
+                    cp.category_eng,
+                    cp.area_name
                 FROM pts
+                LEFT JOIN clupa_polygons cp ON ST_Intersects(cp.geom_projected, pts.t_geom)
+                LIMIT 1
             ),
             dist_check AS (
                 SELECT 
@@ -105,7 +132,11 @@ def analyze_manual_ballistics(
                     (SELECT MIN(ST_Distance(f_geom, geom_projected)) FROM roads) as f_road_dist,
                     (SELECT MIN(ST_Distance(t_geom, geom_projected)) FROM roads) as t_road_dist,
                     (SELECT MIN(ST_Distance(f_geom, geom_projected)) FROM trails) as f_trail_dist,
-                    (SELECT MIN(ST_Distance(t_geom, geom_projected)) FROM trails) as t_trail_dist
+                    (SELECT MIN(ST_Distance(t_geom, geom_projected)) FROM trails) as t_trail_dist,
+                    (SELECT MAX(cs.terrain_enclosure_score) 
+                     FROM candidate_units cu 
+                     JOIN candidate_scores cs ON cu.id = cs.candidate_unit_id 
+                     WHERE ST_Intersects(cu.geom_projected, t_geom)) as t_enclosure
                 FROM pts
             )
             SELECT * FROM tenure_check, dist_check;
@@ -137,6 +168,12 @@ def analyze_manual_ballistics(
             tenure_score -= 30
             tenure_reasons.append("Positions in a Municipal Boundary; check local discharge bylaws.")
 
+        # Data Integrity Check: Are we flying blind?
+        counts_sql = text("SELECT (SELECT count(*) FROM roads) as r_count, (SELECT count(*) FROM trails) as t_count")
+        counts = db.execute(counts_sql).fetchone()
+        roads_loaded = (counts.r_count > 0) if counts else False
+        trails_loaded = (counts.t_count > 0) if counts else False
+
         # 2. Open Area Scores (Firing & Target)
         def calc_open_score(road_dist, trail_dist, is_target=False):
             score = 100
@@ -152,29 +189,92 @@ def analyze_manual_ballistics(
         f_open_score = calc_open_score(row.f_road_dist or 5000, row.f_trail_dist or 5000)
         t_open_score = calc_open_score(row.t_road_dist or 5000, row.t_trail_dist or 5000, is_target=True)
         
-        # 3. Backdrop Score (Simplified Orientation/Safety proxy)
+        # 3. Backdrop & Safety Check (Downrange Road Check)
         backdrop_score = 100
-        # Check bearing: firing to target. Ideal is North (0 deg +/- 45) for backstop illumination/safety.
-        # Calc bearing roughly
+        safety_reasons = []
+        
+        # Calculate shot bearing: firing -> target
         import math
         dy = target_pos["lat"] - firing_pos["lat"]
         dx = (target_pos["lng"] - firing_pos["lng"]) * math.cos(math.radians(firing_pos["lat"]))
-        bearing = math.degrees(math.atan2(dx, dy)) % 360
+        shot_bearing = math.degrees(math.atan2(dx, dy)) % 360
         
-        if not (315 <= bearing or bearing <= 45): # Not Northbound
-             backdrop_score -= 20
-             
-        # Penalty if target is very close to a road
-        if (row.t_road_dist or 5000) < 500:
-            backdrop_score -= (500 - row.t_road_dist) / 500 * 50
+        # SQL for Safety Zone check (High-precision sector)
+        # Starting at firing position, extending 10km at bearing +/- 15 deg
+        safety_sql = text("""
+            WITH origin AS (
+                SELECT ST_Transform(ST_SetSRID(ST_MakePoint(:f_lng, :f_lat), 4326), 3161) as f_geom
+            ),
+            trajectory AS (
+                -- Create a precise line extending 10km at the given bearing
+                SELECT ST_MakeLine(
+                    f_geom,
+                    ST_Translate(f_geom, :radius * sin(radians(:bearing)), :radius * cos(radians(:bearing)))
+                ) as line
+                FROM origin
+            ),
+            roads_in_zone AS (
+                SELECT 
+                    count(*) as hazard_count,
+                    MIN(ST_Distance(origin.f_geom, ST_Intersection(h.geom_projected, tj.line))) as min_dist
+                FROM (
+                    SELECT geom_projected FROM roads
+                    UNION ALL
+                    SELECT geom_projected FROM trails
+                ) h, trajectory tj, origin
+                WHERE ST_Intersects(h.geom_projected, tj.line)
+            )
+            SELECT hazard_count, min_dist FROM roads_in_zone;
+        """)
+        
+        # We'll use 10km as the conservative default
+        safety_radius = 10000 
+        safety_row = db.execute(safety_sql, {
+            "f_lng": firing_pos["lng"], "f_lat": firing_pos["lat"],
+            "bearing": shot_bearing,
+            "radius": safety_radius
+        }).fetchone()
+        
+        has_downrange_hazard = (safety_row.hazard_count > 0) if safety_row else False
+        closest_hazard_m = safety_row.min_dist if (safety_row and safety_row.min_dist is not None) else None
+        backstop_verified = (row.t_enclosure is not None and row.t_enclosure > 60)
+        
+        # Helper for formatting hazard distance
+        def format_haz_dist(m):
+            if m is None: return "NULL"
+            if m < 1000: return f"{round(m)}m"
+            return f"{round(m/1000, 1)}km"
             
+        if has_downrange_hazard:
+            # Check if hazard is BETWEEN shooter and target (Uprange)
+            if closest_hazard_m < (dist - 5):
+                backdrop_score = 0
+                safety_reasons.append(f"CRITICAL: Roadway/Trail detected {format_haz_dist(closest_hazard_m)} away (in front of target). Direct line of fire conflict.")
+            else:
+                # Hazard is behind the target
+                if backstop_verified:
+                    safety_reasons.append(f"PASSED: Verified backstop protects roadway/trail behind target (Closest hazard: {format_haz_dist(closest_hazard_m)}).")
+                else:
+                    backdrop_score = 0
+                    safety_reasons.append(f"CRITICAL: Roadway/Trail detected {format_haz_dist(closest_hazard_m)} downrange. No backstop verified.")
+        else:
+            # No hazards at all
+            if backstop_verified:
+                safety_reasons.append("PASSED: Verified natural backstop detected and no roadways in 10km sector.")
+            else:
+                safety_reasons.append("PASSED: No public roadways detected in the 10km downrange danger sector (Assuming No Backstop).")
+        
+        # Ideal orientation check (Northbound)
+        if not (315 <= shot_bearing or shot_bearing <= 45):
+             backdrop_score = max(0, backdrop_score - 20)
+             
         backdrop_score = max(0, round(backdrop_score))
-
+ 
         # Overall Score
         overall_score = (tenure_score * 0.4) + (f_open_score * 0.2) + (t_open_score * 0.2) + (backdrop_score * 0.2)
         
         status = "Decent"
-        if tenure_score == 0 or overall_score < 40:
+        if tenure_score == 0 or backdrop_score == 0 or overall_score < 40:
             status = "Infeasible"
         elif overall_score < 70:
             status = "Marginal"
@@ -183,6 +283,22 @@ def analyze_manual_ballistics(
             "score": round(overall_score),
             "status": status,
             "distance_m": round(dist, 1),
+            "bearing": round(shot_bearing, 1),
+            "policy_ident": row.policy_ident,
+            "designation_eng": row.designation_eng,
+            "category_eng": row.category_eng,
+            "area_name": row.area_name,
+            "safety_check": {
+                "has_downrange_hazard": has_downrange_hazard,
+                "closest_hazard_m": closest_hazard_m,
+                "closest_hazard_fmt": format_haz_dist(closest_hazard_m),
+                "danger_zone_radius_km": safety_radius / 1000,
+                "backstop_verified": backstop_verified,
+                "data_integrity": {
+                    "roads_loaded": roads_loaded,
+                    "trails_loaded": trails_loaded
+                }
+            },
             "sub_scores": {
                 "tenure": round(tenure_score),
                 "firing_openness": f_open_score,
@@ -194,7 +310,7 @@ def analyze_manual_ballistics(
                 "in_protected": row.in_protected,
                 "in_municipal": row.in_municipal
             },
-            "recommendation": " ".join(tenure_reasons) if tenure_reasons else "Excellent setup with safe tenure and clearance."
+            "recommendation": " ".join(tenure_reasons + safety_reasons) if (tenure_reasons or safety_reasons) else "Excellent setup with safe tenure and clearance."
         }
         
     except Exception as e:

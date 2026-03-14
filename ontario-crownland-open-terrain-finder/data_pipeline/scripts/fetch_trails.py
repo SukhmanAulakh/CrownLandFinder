@@ -15,11 +15,23 @@ def fetch_layer(config_node: dict, filename: str):
     rest_url = config_node.get("rest_url")
     if not rest_url: return
     
-    logger.info(f"Fetching {filename}...")
+    logger.info(f"Fetching {filename} (Haliburton Area)...")
     os.makedirs(RAW_DIR, exist_ok=True)
     out_path = RAW_DIR / filename
     
-    params = {"where": "1=1", "outFields": "*", "outSR": "4269", "f": "geojson"}
+    # BBOX for Haliburton area to ensure local trails are captured
+    bbox = "-79.0,44.5,-77.5,45.5"
+    params = {
+        "where": "1=1", 
+        "outFields": "*", 
+        "outSR": "4269", 
+        "f": "geojson",
+        "geometry": bbox,
+        "geometryType": "esriGeometryEnvelope",
+        "inSR": "4269",
+        "spatialRel": "esriSpatialRelIntersects",
+        "resultRecordCount": 2000
+    }
     try:
         with requests.get(f"{rest_url}/query", params=params, stream=True, timeout=300) as r:
             r.raise_for_status()
