@@ -63,7 +63,7 @@ function getBoundsFromFeature(feature: any): mapboxgl.LngLatBounds | null {
   return hasPoints ? bounds : null;
 }
 
-const MapView = forwardRef<MapHandle, MapViewProps>(({ 
+const MapView = forwardRef<MapHandle, MapViewProps>(function MapView({ 
   onFeatureClassify, 
   onCandidatesLoaded, 
   onMapReady, 
@@ -477,6 +477,7 @@ const MapView = forwardRef<MapHandle, MapViewProps>(({
         map.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
       } else {
         map.setTerrain(null);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       }
     }, [showTerrain, styleLoaded]);
 

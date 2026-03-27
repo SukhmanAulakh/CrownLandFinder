@@ -7,16 +7,17 @@ interface MeasurementPanelProps {
   distances: number[]; // individual segments in meters
   onClose: () => void;
   onClear: () => void;
+  className?: string;
 }
 
-export default function MeasurementPanel({ points, distances, onClose, onClear }: MeasurementPanelProps) {
+export default function MeasurementPanel({ points, distances, onClose, onClear, className = "right-12 top-24" }: MeasurementPanelProps) {
   const totalMeters = distances.reduce((sum, d) => sum + d, 0);
   const totalDisplay = totalMeters >= 1000 
     ? `${(totalMeters / 1000).toFixed(2)} km` 
     : `${Math.round(totalMeters)} m`;
 
   return (
-    <div className="absolute right-12 top-24 w-72 bg-slate-950/90 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-700 overflow-hidden z-[50] flex flex-col max-h-[70vh]">
+    <div className={`absolute w-72 bg-slate-950/90 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-700 overflow-hidden z-[50] flex flex-col max-h-[70vh] transition-all duration-300 ${className}`}>
       {/* Header */}
       <div className="p-3.5 border-b border-slate-700 bg-slate-900/50 flex justify-between items-center shrink-0 rounded-t-2xl">
         <div className="flex items-center gap-2">

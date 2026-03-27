@@ -75,15 +75,22 @@ export default function Home() {
   const handleAddMeasurePoint = useCallback((point: {lng: number, lat: number}) => {
     setMeasurePoints(prev => {
       if (prev.length >= 20) return prev;
-      const next = [...prev, point];
-      if (next.length > 1) {
-        const p1 = next[next.length - 2];
-        const d = haversine(p1, point);
-        setMeasureDistances(dPrev => [...dPrev, d]);
-      }
-      return next;
+      return [...prev, point];
     });
   }, []);
+
+  // Compute distances separately when points change to avoid duplicate triggers in strict mode
+  useEffect(() => {
+    if (measurePoints.length > 1) {
+      const dists: number[] = [];
+      for (let i = 1; i < measurePoints.length; i++) {
+        dists.push(haversine(measurePoints[i-1], measurePoints[i]));
+      }
+      setMeasureDistances(dists);
+    } else {
+      setMeasureDistances([]);
+    }
+  }, [measurePoints]);
 
   const handleClearMeasure = () => {
     setMeasurePoints([]);
@@ -307,8 +314,10 @@ export default function Home() {
           />
         </div>
 
-        {/* Floating Controls — Shifted left to avoid Mapbox zoom controls */}
-        <div className="absolute top-6 right-16 z-10 flex flex-col gap-3">
+        {/* Floating Controls — Shifted left when candidate panel is open to avoid overlap */}
+        <div className={`absolute top-6 z-10 flex flex-col gap-3 transition-all duration-300 ${
+          selectedFeature ? 'right-[336px]' : 'right-16'
+        }`}>
           <button 
             onClick={handleToggleMeasurement}
             className={`p-3 rounded-xl border transition shadow-xl flex items-center justify-center ${
@@ -345,6 +354,7 @@ export default function Home() {
             distances={measureDistances}
             onClear={handleClearMeasure}
             onClose={() => setIsMeasuring(false)}
+            className={`transition-all duration-300 ${selectedFeature ? 'right-[336px] top-6' : 'right-12 top-24'}`}
           />
         )}
       </div>
