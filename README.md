@@ -74,6 +74,22 @@ Deploying this software requires hosting a Next.js frontend, a Python FastAPI ba
 
 ---
 
+### Step 4: Single-Instance Deployment (AWS EC2 / VPS)
+If you prefer to host everything on a single server instead of split cloud services, this project is already optimized for a **one-click Docker Compose deployment**.
+
+1.  **Launch Instance**: Spin up an Ubuntu EC2 (`t3.medium` or larger recommended).
+2.  **Install Docker**: `sudo apt update && sudo apt install docker-compose -y`
+3.  **Clone & Configure**: 
+    - Clone the repository.
+    - Create a `.env` file with your `NEXT_PUBLIC_MAPBOX_TOKEN` and a secure `POSTGRES_PASSWORD`.
+4.  **Deploy**: 
+    - Run `docker-compose up -d --build`.
+    - Access your app via the instance IP (Ports `3000` for frontend, `8000` for API).
+
+> **Tip**: Use an Nginx reverse proxy on the same EC2 to handle SSL (HTTPS) and route both frontend and API through port 80/443.
+
+---
+
 ## 🚦 Local Development
 
 ### Prerequisites
