@@ -35,6 +35,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+    env_file:
+      - .env
     volumes:
       - ./backend:/app
       - ./data_pipeline:/data_pipeline
@@ -75,12 +77,13 @@ services:
       dockerfile: infra/frontend.Dockerfile
     ports:
       - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
     volumes:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
     depends_on:
       - backend
 

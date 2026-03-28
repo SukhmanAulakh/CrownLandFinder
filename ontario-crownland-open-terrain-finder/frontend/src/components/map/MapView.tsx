@@ -63,7 +63,7 @@ function getBoundsFromFeature(feature: any): mapboxgl.LngLatBounds | null {
   return hasPoints ? bounds : null;
 }
 
-const MapView = forwardRef<MapHandle, MapViewProps>(function MapView({ 
+const MapView = forwardRef<MapHandle, MapViewProps>(({ 
   onFeatureClassify, 
   onCandidatesLoaded, 
   onMapReady, 

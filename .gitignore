@@ -61,13 +61,18 @@ ENV/
 .DS_Store
 Thumbs.db
 desktop.ini
+*.pem
+**/*.pem
 
 # Databases (do not commit local DB files)
 **/*.db
 **/*.sqlite
+**/*.sql
+**/*.dump
 **/*.sqlite3
 **/*.db-wal
 **/*.db-shm
+DEPLOY_EC2.md
 
 # IDEs
 .idea/
