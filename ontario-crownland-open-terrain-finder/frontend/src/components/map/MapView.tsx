@@ -78,7 +78,7 @@ const MapView = forwardRef<MapHandle, MapViewProps>(function MapView({
   isMeasuring,
   measurePoints = [],
   onAddMeasurePoint
-}, ref) => {
+}, ref) {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<mapboxgl.Map | null>(null);
     const [mapLoaded, setMapLoaded] = useState(false);
